@@ -1,0 +1,172 @@
+esphome:
+  name: philips-spb9010w-29388
+
+esp8266:
+  board: esp01_1m
+
+# Enable Home Assistant API
+api:
+
+# 添加 time 组件，这是编译通过所必需的
+time:
+  - platform: homeassistant
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+safe_mode: 
+
+wifi:
+  networks:
+  - ssid: !secret wifi_ssid
+    password: !secret wifi_password
+  power_save_mode: light
+  # ...
+  on_connect:
+    - light.turn_on: Wifi_LED
+  on_disconnect:
+    - light.turn_off: Wifi_LED
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "philips-spb9010w-29388"
+    password: "12345678"
+
+captive_portal:
+
+# Example configuration entry
+substitutions:
+  update_interval: 60s
+
+# Disable logging over USB
+logger:
+  baud_rate: 115200
+
+uart:
+  rx_pin: 3
+  baud_rate: 4800
+  rx_buffer_size: 24
+  id: rx8032
+  parity: EVEN
+
+sensor:
+  - platform: cse7766
+    uart_id: rx8032
+    current:
+      name: "HLW8032 Current"
+      accuracy_decimals: 3
+      filters:
+        - multiply: 0.5
+        - sliding_window_moving_average:
+            window_size: 10
+            send_every: 10
+            send_first_at: 1
+    voltage:
+      name: "HLW8032 Voltage"
+      accuracy_decimals: 1
+      filters:
+        - multiply: 1.8810
+        #- multiply: 1.925
+        - throttle_average: ${update_interval}
+    power:
+      name: "HLW8032 Power"
+      id: hlw8032_power # <-- 为 power 传感器添加一个id，供 total_daily_energy 使用
+      accuracy_decimals: 2
+      filters:
+        - multiply: 0.9293
+        - sliding_window_moving_average:
+            window_size: 10
+            send_every: 10
+            send_first_at: 1
+
+  # 3. Total Daily Energy 传感器部分保持不变，它是正确的
+  - platform: total_daily_energy
+    name: "HLW8032 Energy"
+    power_id: hlw8032_power
+    device_class: energy
+    state_class: total_increasing
+    unit_of_measurement: "kWh"
+    accuracy_decimals: 3
+    filters:
+      - multiply: 0.001
+      - median:
+          window_size: 3
+          send_every: 1
+      - lambda: |-
+          static float last_value = 0.0;
+          static float max_delta = 0.6;
+          if (id(hlw8032_power).has_state() && last_value != 0.0 && x - last_value > max_delta) {
+            return last_value;
+          }
+          last_value = x;
+          return x;
+      - lambda: |-
+          static float last_valid = 0.0;
+          if (x >= last_valid) {
+            last_valid = x;
+            return x;
+          } else {
+            return last_valid;
+          }
+
+
+
+light:
+  - platform: binary
+    name: "Wifi LED"
+    id: "Wifi_LED"
+    output: blue_led
+    # 'internal: true' 意味着这个灯实体默认在HA前端隐藏，主要用于内部自动化
+    internal: True
+
+  - platform: binary
+    name: "Switch LED"
+    id: "Switch_LED"
+    output: white_led
+    internal: True
+
+output:
+  - id: blue_led
+    platform: gpio
+    # 蓝色LED，原作者定义为GPIO4，通常用作WiFi状态灯
+    pin: GPIO4
+
+  - id: white_led
+    platform: gpio
+    # 白色LED，原作者定义为GPIO16，这里用作开关状态灯
+    pin: GPIO16
+
+switch:
+  - platform: gpio
+    name: "Switch Relay"  ## 名称可以自定义
+    # 继电器，原作者定义为GPIO14
+    pin: GPIO14
+    id: relay
+    # 通电默认打开，这个设置是正确的
+    restore_mode: ALWAYS_ON
+    # 当开关打开时，执行动作
+    on_turn_on:
+    - light.turn_on: Switch_LED  # 点亮白色LED
+    - logger.log: "Power Switch On"
+    # 当开关关闭时，执行动作
+    on_turn_off:
+    - light.turn_off: Switch_LED # 关闭白色LED
+    - logger.log: "Power Switch Off"
+
+binary_sensor:
+  # 物理按钮开关
+  - platform: gpio
+    pin:
+      # 物理按键，原作者定义为GPIO5
+      number: GPIO5
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "Power Button"
+    internal: true
+    on_press:
+      # 注意：这里的delay和下面的filters里的delayed_on_off作用类似，
+      # 用于防抖。保留一个通常就够了，但两个都在也无害。
+      # delay: 500ms # 作者可能想通过延迟来避免快速误触
+      - switch.toggle: relay
+      - logger.log: "Power Button Turned Press!"
+    filters:
+      - delayed_on_off: 10ms # 10毫秒的软件防抖

@@ -39,7 +39,7 @@ substitutions:
 
 # Disable logging over USB
 logger:
-  baud_rate: 115200
+  baud_rate: 0
 
 uart:
   rx_pin: 3
@@ -91,22 +91,22 @@ sensor:
       - median:
           window_size: 3
           send_every: 1
-      - lambda: |-
-          static float last_value = 0.0;
-          static float max_delta = 0.6;
-          if (id(hlw8032_power).has_state() && last_value != 0.0 && x - last_value > max_delta) {
-            return last_value;
-          }
-          last_value = x;
-          return x;
-      - lambda: |-
-          static float last_valid = 0.0;
-          if (x >= last_valid) {
-            last_valid = x;
-            return x;
-          } else {
-            return last_valid;
-          }
+      # - lambda: |-
+      #     static float last_value = 0.0;
+      #     static float max_delta = 0.6;
+      #     if (id(hlw8032_power).has_state() && last_value != 0.0 && x - last_value > max_delta) {
+      #       return last_value;
+      #     }
+      #     last_value = x;
+      #     return x;
+      # - lambda: |-
+      #     static float last_valid = 0.0;
+      #     if (x >= last_valid) {
+      #       last_valid = x;
+      #       return x;
+      #     } else {
+      #       return last_valid;
+      #     }
 
 
 

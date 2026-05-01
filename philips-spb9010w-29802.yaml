@@ -142,7 +142,7 @@ switch:
     pin: GPIO14
     id: relay
     # 通电默认打开，这个设置是正确的
-    restore_mode: ALWAYS_ON
+    restore_mode: ALWAYS_OFF
     # 当开关打开时，执行动作
     on_turn_on:
     - light.turn_on: Switch_LED  # 点亮白色LED
